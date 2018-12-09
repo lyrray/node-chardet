@@ -99,9 +99,20 @@ module.exports.detectFile = function(filepath, opts, cb) {
     fd = fs.openSync(filepath, 'r'),
       sample = new Buffer(opts.sampleSize);
 
-    fs.read(fd, sample, 0, opts.sampleSize, null, function(err) {
-      handler(err, sample);
-    });
+    var read = function(position, readBytes) {
+      fs.read(fd, sample, readBytes, 1, position, function(err) {
+        if(err || readBytes == opts.sampleSize - 1) {
+          handler(err, sample);
+        } else if (sample[readBytes] == 0x0d) { // skip \r
+          read(position + 1, readBytes);
+        } else {
+          read(position + 1, readBytes + 1);
+        }
+      });
+    }
+
+    read(0, 0);
+
     return;
   }
 
@@ -113,7 +124,11 @@ module.exports.detectFileSync = function(filepath, opts) {
     var fd = fs.openSync(filepath, 'r'),
       sample = new Buffer(opts.sampleSize);
 
-    fs.readSync(fd, sample, 0, opts.sampleSize);
+    for(var readBytes = 0, position = 0; readBytes < opts.sampleSize; position++){
+      fs.readSync(fd, sample, readBytes, 1, position);
+      if (sample[readBytes] != 0x0d) readBytes++; // skipping \r
+    }
+
     fs.closeSync(fd);
     return self.detect(sample, opts);
   }
